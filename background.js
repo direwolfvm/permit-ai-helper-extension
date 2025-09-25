@@ -87,7 +87,9 @@ function buildContextMessage(context) {
       .map((field, index) => {
         const label = field?.label || field?.name || field?.placeholder || field?.tagName || `Field ${index + 1}`;
         const value = field?.value ? `Value: ${field.value}` : 'Value: (empty)';
-        return `• ${label} (${field?.tagName || 'input'}): ${value}`;
+        const id = field?.id ? `ID: ${field.id}` : field?.name ? `Name: ${field.name}` : null;
+        const idSuffix = id ? ` • ${id}` : '';
+        return `• ${label} (${field?.tagName || 'input'}${idSuffix}): ${value}`;
       })
       .join('\n');
     snippets.push('Visible form fields:\n' + fieldDescriptions);
@@ -95,6 +97,7 @@ function buildContextMessage(context) {
   if (context.field) {
     const field = context.field;
     snippets.push(`Active field label: ${field.label || field.name || field.placeholder || field.tagName}`);
+    if (field.id) snippets.push(`Active field ID: ${field.id}`);
     if (field.placeholder) snippets.push(`Field placeholder: ${field.placeholder}`);
     if (field.value) snippets.push(`Current value: ${field.value}`);
   }
