@@ -297,6 +297,7 @@
   const fieldSummaryCache = new Map();
   let isOpen = false;
   let isBusy = false;
+  let pendingFieldUpdate = null;
 
   function togglePanel(forceState) {
     if (typeof forceState === 'boolean') {
@@ -557,6 +558,37 @@
     return { value, fieldDescription };
   }
 
+  function isAffirmativeResponse(message) {
+    if (!message) return false;
+    return /^(?:yes|yep|yeah|sure|ok|okay|affirmative|please|do it|go ahead|sounds good|absolutely|of course)/i.test(
+      message.trim()
+    );
+  }
+
+  function isNegativeResponse(message) {
+    if (!message) return false;
+    return /^(?:no|nope|nah|not now|maybe later|don't|do not|stop)/i.test(message.trim());
+  }
+
+  function applyFieldCommand(command, { acknowledge = true } = {}) {
+    if (!command) return false;
+    const field = findFieldByDescription(command.fieldDescription);
+    if (!field) return false;
+
+    setFieldValue(field, command.value);
+    field.focus({ preventScroll: false });
+    highlightField(field);
+
+    if (acknowledge) {
+      acknowledgeFieldUpdate(field, command.value);
+    } else {
+      const summary = summarizeField(field);
+      fieldSummaryCache.set(summary.id, summary);
+    }
+
+    return true;
+  }
+
   function acknowledgeFieldUpdate(field, value) {
     const summary = summarizeField(field);
     fieldSummaryCache.set(summary.id, summary);
@@ -564,12 +596,76 @@
     recordMessage('assistant', `Set "${value}" in the ${label}. Let me know if you need anything else.`);
   }
 
+  function extractAssistantFieldSuggestion(message) {
+    if (!message || typeof message !== 'string') return null;
+    const command = parseFieldCommand(message);
+    if (!command) return null;
+
+    const lowered = message.toLowerCase();
+    const needsConfirmation = /would you like me to|should i (?:go ahead and )?update|let me know if you want me to update/i.test(
+      lowered
+    );
+    const alreadyApplied = /i (?:have|just) (?:updated|set)|it's (?:all )?set|done\b/.test(lowered);
+
+    return {
+      command,
+      needsConfirmation: needsConfirmation && !alreadyApplied,
+      alreadyApplied
+    };
+  }
+
+  function handleAssistantMessageActions(message) {
+    const suggestion = extractAssistantFieldSuggestion(message);
+    if (!suggestion) {
+      return;
+    }
+
+    if (suggestion.needsConfirmation) {
+      pendingFieldUpdate = suggestion.command;
+      return;
+    }
+
+    pendingFieldUpdate = null;
+    const applied = applyFieldCommand(suggestion.command, { acknowledge: false });
+    if (!applied) {
+      recordMessage(
+        'assistant',
+        `I couldn't automatically update the ${suggestion.command.fieldDescription} field. Please adjust it manually.`
+      );
+    }
+  }
+
   function handleDirectFieldCommand(message) {
+    const trimmed = message.trim();
+    if (!trimmed) return false;
+
+    if (pendingFieldUpdate) {
+      if (isAffirmativeResponse(trimmed)) {
+        const command = pendingFieldUpdate;
+        pendingFieldUpdate = null;
+        recordMessage('user', message);
+        if (!applyFieldCommand(command)) {
+          recordMessage(
+            'assistant',
+            `I couldn't automatically update the ${command.fieldDescription} field. Please adjust it manually.`
+          );
+        }
+        return true;
+      }
+      if (isNegativeResponse(trimmed)) {
+        pendingFieldUpdate = null;
+        recordMessage('user', message);
+        recordMessage('assistant', 'Okay, I will leave that field unchanged.');
+        return true;
+      }
+    }
+
     const command = parseFieldCommand(message);
     if (!command) return false;
     const field = findFieldByDescription(command.fieldDescription);
     if (!field) return false;
 
+    pendingFieldUpdate = null;
     recordMessage('user', message);
     setFieldValue(field, command.value);
     field.focus({ preventScroll: false });
@@ -620,8 +716,9 @@
         return message;
       }
 
-      const assistantReply = response.message || 'I did not receive a response.';
+      const assistantReply = (response.message || 'I did not receive a response.').trim();
       recordMessage('assistant', assistantReply);
+      handleAssistantMessageActions(assistantReply);
       if (onAssistantMessage) {
         onAssistantMessage(assistantReply);
       }
