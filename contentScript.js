@@ -535,7 +535,28 @@
     if (!message || typeof message !== 'string') {
       return '';
     }
-    return message.replace(ACTION_BLOCK_STRIP_REGEX, '').trim();
+
+    ACTION_BLOCK_REGEX.lastIndex = 0;
+    const hasActionBlock = ACTION_BLOCK_REGEX.test(message);
+    const withoutBlocks = message.replace(ACTION_BLOCK_STRIP_REGEX, '').trim();
+
+    if (!hasActionBlock) {
+      return withoutBlocks;
+    }
+
+    if (!withoutBlocks) {
+      return '';
+    }
+
+    const filteredLines = withoutBlocks
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean)
+      .filter(line => !/^i\s+(?:will|am|can)\b/i.test(line))
+      .filter(line => !/^(?:here['’]s|here is|this is)\b/i.test(line))
+      .filter(line => !/\baction\b/i.test(line));
+
+    return filteredLines.join('\n').trim();
   }
 
   async function callAssistant(userContent, context = {}, { skipChatMessage = false, onAssistantMessage } = {}) {
