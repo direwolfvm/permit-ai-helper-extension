@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Permit AI Helper Options</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Permit AI Helper</h1>
+      <p>
+        Enter your OpenAI API key to enable the assistant. The key is stored locally using
+        Chrome sync storage and is only used to call the OpenAI Chat Completions API.
+      </p>
+      <form id="options-form">
+        <label for="api-key">OpenAI API key</label>
+        <input id="api-key" name="api-key" type="password" autocomplete="off" placeholder="sk-..." required />
+        <p class="hint">Generate a key at <a href="https://platform.openai.com/account/api-keys" target="_blank" rel="noreferrer">platform.openai.com</a>.</p>
+        <div class="actions">
+          <button type="submit">Save</button>
+          <button type="button" id="clear">Remove key</button>
+        </div>
+      </form>
+      <output id="status" role="status" aria-live="polite"></output>
+      <section class="help">
+        <h2>How it works</h2>
+        <ul>
+          <li>The assistant can summarize form fields and draft polished responses.</li>
+          <li>No data is stored outside of your browser besides requests sent to OpenAI.</li>
+          <li>You can close the sidebar at any time using the × button at the top.</li>
+        </ul>
+      </section>
+    </main>
+    <script src="options.js" type="module"></script>
+  </body>
+</html>

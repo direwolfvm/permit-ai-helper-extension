@@ -1,77 +1,44 @@
-# Permit AI Helper Extension
+# Permit AI Helper (Chrome Extension)
 
-A small helper project for the Permit AI Helper (VS Code extension / tooling). This repository currently contains the source and assets for the extension — work in progress.
+Permit AI Helper is a browser extension for Chromium-based browsers that adds an AI assistant sidebar to any webpage. The assistant is tuned for environmental review and permitting workflows: it can analyze forms, explain fields, and draft or refine text directly inside the page.
 
-> Note: I inferred this is a VS Code extension from the repository name. If that's incorrect, update the "Project type" section below or provide more details and I can tailor this README.
+## Features
 
-## Project type
-This repository is intended to be a VS Code extension (or related helper tooling). It may also contain Node.js or Python tooling. The setup instructions below provide steps for both common flows.
+- **Persistent assistant sidebar** – Opens alongside the current tab without blocking the page. You can toggle it using the “Permit AI” tab.
+- **Form discovery** – Automatically detects inputs, textareas, and selects. Each field shows quick actions to focus, request guidance, or improve the existing answer.
+- **On-page editing** – Accepted improvements are written back into the form and trigger standard `input`/`change` events for compatibility with validation scripts.
+- **Context-aware prompts** – Sends the page URL, title, and recent field metadata to the AI model so responses stay relevant to the current task.
+- **OpenAI integration** – Uses the Chat Completions API (default model: `gpt-4o-mini`). The API key is stored locally via Chrome sync storage and never leaves the browser except for OpenAI requests.
 
-## Prerequisites
-- Git (for source control)
-- One of the following depending on the project: Node.js (>=14) and npm/yarn, or Python 3.8+ and pip
-- Visual Studio Code (recommended)
+## Getting started
 
-## Quick setup
-Pick the section that matches the project files in the repo.
+1. Clone or download this repository.
+2. Open `chrome://extensions` (or the equivalent page in your Chromium browser).
+3. Enable **Developer mode**.
+4. Choose **Load unpacked** and select the repository folder.
+5. Open the extension **Options** page and add your OpenAI API key.
 
-### If this is a Node.js / VS Code extension
-1. Install dependencies:
+After loading, a “Permit AI” tab appears on the right edge of every page. Click it to open the assistant.
 
-```bash
-npm install
-# or
-yarn
-```
+## Development guide
 
-2. Common developer commands (may vary):
+- All source files are plain JavaScript/HTML/CSS—no build step required.
+- Background logic lives in [`background.js`](background.js) and communicates with the content script via `chrome.runtime.sendMessage`.
+- The sidebar UI is injected by [`contentScript.js`](contentScript.js) using a shadow DOM to avoid style conflicts with the host page.
+- User settings (currently just the OpenAI API key) are managed through [`options.html`](options.html) and [`options.js`](options.js).
 
-```bash
-# build
-npm run build
-# run in development mode / launch extension host
-npm run watch
-# run tests
-npm test
-```
+### Testing tips
 
-If you don't have a `package.json`, skip these steps and check for other language files.
+- Use Chrome’s **Extensions** page to inspect the background service worker for logs.
+- When validating form autofill, open DevTools on the target page and watch for `input`/`change` events.
+- If the assistant reports missing credentials, revisit the options page and confirm the API key is saved.
 
-### If this is a Python project
-1. Create a virtual environment and install requirements:
+## Security & privacy considerations
 
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-2. Run tests or check scripts if provided (for example):
-
-```bash
-pytest
-```
-
-## Development
-- Open the repository in VS Code.
-- Use the Debug panel to run the extension host (if this is a VS Code extension).
-- Follow existing CONTRIBUTING.md or GitHub issue templates if present.
-
-## Contributing
-Contributions are welcome. A minimal workflow:
-
-1. Fork the repository.
-2. Create a branch for your work.
-3. Open a pull request describing your changes.
-
-If you'd like, add a `CONTRIBUTING.md` with project-specific guidelines.
+- The extension requests `<all_urls>` host permissions so it can read forms on any page where the assistant is opened.
+- API keys are stored with `chrome.storage.sync`; remove the key from the options page if you no longer want the extension to access OpenAI.
+- Only detected form metadata and the text you send are included in prompts. Sensitive data should be reviewed before submission.
 
 ## License
-No license file detected. Add a `LICENSE` file (for example, MIT) if you want to specify terms.
 
-## Contact
-Repository owner: direwolfvm
-
----
-
-If you'd like, I can update the README with specific build and run instructions after you tell me what language or framework this project uses (for example, Node/TypeScript or Python).
+This project is currently provided without a specific license. Contact the repository owner if you require different terms.
