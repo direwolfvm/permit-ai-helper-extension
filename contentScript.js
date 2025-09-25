@@ -292,12 +292,22 @@
   const formFieldCache = new Map();
   const conversation = [{
     role: 'system',
-    content: 'You are Permit AI, an expert environmental review and permitting assistant embedded inside a browser extension. Help the user interpret web form fields, improve their text responses with professional tone, and keep answers concise and actionable. Always ask for clarification if the request is ambiguous.'
+    content: [
+      'You are Permit AI, an expert environmental review and permitting assistant embedded inside a browser extension.',
+      'Help the user interpret web form fields, improve their text responses with professional tone, and keep answers concise and actionable.',
+      'Always ask for clarification if the request is ambiguous.',
+      'When you need to update a form field, respond with an action block in the following format:',
+      '```action',
+      '{"type":"fill_field","fieldId":"FIELD_ID_FROM_CONTEXT","value":"Desired value"}',
+      '```',
+      'Use the fieldId from the provided context when available. Provide any natural language explanation outside of the action block.',
+      'Only emit an action when you are confident it should run.'
+    ].join('\n')
   }];
   const fieldSummaryCache = new Map();
   let isOpen = false;
   let isBusy = false;
-  let pendingFieldUpdate = null;
+  const ACTION_BLOCK_REGEX = /```action\s+([\s\S]*?)```/gi;
 
   function togglePanel(forceState) {
     if (typeof forceState === 'boolean') {
@@ -506,172 +516,80 @@
     return formFieldCache.get(bestFieldId) || null;
   }
 
-  function extractQuotedValue(text) {
-    const match = text.match(/["'“”‘’]([^"'“”‘’]+)["'“”‘’]/);
-    if (!match) return null;
-    return match[1].trim();
-  }
-
-  function parseFieldCommand(message) {
-    const lowered = message.toLowerCase();
-    const verbs = ['put', 'type', 'enter', 'fill', 'set', 'update'];
-    if (!verbs.some(verb => lowered.includes(verb))) {
-      return null;
-    }
-
-    let value = extractQuotedValue(message);
-    let remainder = message;
-    if (value) {
-      remainder = message.replace(/["'“”‘’][^"'“”‘’]+["'“”‘’]/, '');
-    }
-
-    const fieldMatch = remainder.match(/(?:in|into|to|for)\s+(?:the\s+)?([\w\s-]+?)(?:\s+(?:field|input|box|textbox))?(?:[?.!,]|$)/i);
-    let fieldDescription = fieldMatch ? fieldMatch[1] : '';
-
-    if (!value) {
-      const setMatch = message.match(/(?:set|update)\s+(?:the\s+)?([\w\s-]+?)(?:\s+(?:field|input|box|textbox))?\s+(?:to|as)\s+([^?.!,]+)/i);
-      if (setMatch) {
-        fieldDescription = fieldDescription || setMatch[1];
-        value = setMatch[2].trim();
+  function parseActionBlocks(message) {
+    if (!message || typeof message !== 'string') return [];
+    const actions = [];
+    ACTION_BLOCK_REGEX.lastIndex = 0;
+    let match;
+    while ((match = ACTION_BLOCK_REGEX.exec(message)) !== null) {
+      try {
+        const parsed = JSON.parse(match[1].trim());
+        if (parsed && typeof parsed === 'object') {
+          actions.push(parsed);
+        }
+      } catch (error) {
+        console.error('[Permit AI Helper] Failed to parse action block', error);
       }
     }
-
-    if (!value) {
-      const simpleMatch = message.match(/(?:put|type|enter|fill)\s+(.+?)\s+(?:in|into|to)\s+(?:the\s+)?([\w\s-]+)(?:\s+(?:field|input|box|textbox))?/i);
-      if (simpleMatch) {
-        value = simpleMatch[1].trim();
-        fieldDescription = fieldDescription || simpleMatch[2];
-      }
-    }
-
-    if (value) {
-      value = value.replace(/[?.!,]+$/, '').trim();
-    }
-    if (fieldDescription) {
-      fieldDescription = fieldDescription.replace(/[?.!,]+$/, '').trim();
-    }
-
-    if (!value || !fieldDescription) {
-      return null;
-    }
-
-    return { value, fieldDescription };
+    return actions;
   }
 
-  function isAffirmativeResponse(message) {
-    if (!message) return false;
-    return /^(?:yes|yep|yeah|sure|ok|okay|affirmative|please|do it|go ahead|sounds good|absolutely|of course)/i.test(
-      message.trim()
-    );
-  }
-
-  function isNegativeResponse(message) {
-    if (!message) return false;
-    return /^(?:no|nope|nah|not now|maybe later|don't|do not|stop)/i.test(message.trim());
-  }
-
-  function applyFieldCommand(command, { acknowledge = true } = {}) {
-    if (!command) return false;
-    const field = findFieldByDescription(command.fieldDescription);
-    if (!field) return false;
-
-    setFieldValue(field, command.value);
-    field.focus({ preventScroll: false });
-    highlightField(field);
-
-    if (acknowledge) {
-      acknowledgeFieldUpdate(field, command.value);
-    } else {
-      const summary = summarizeField(field);
-      fieldSummaryCache.set(summary.id, summary);
-    }
-
-    return true;
-  }
-
-  function acknowledgeFieldUpdate(field, value) {
+  function updateFieldSummary(field) {
     const summary = summarizeField(field);
     fieldSummaryCache.set(summary.id, summary);
-    const label = summary.label || summary.name || summary.placeholder || summary.tagName || 'field';
-    recordMessage('assistant', `Set "${value}" in the ${label}. Let me know if you need anything else.`);
   }
 
-  function extractAssistantFieldSuggestion(message) {
-    if (!message || typeof message !== 'string') return null;
-    const command = parseFieldCommand(message);
-    if (!command) return null;
-
-    const lowered = message.toLowerCase();
-    const needsConfirmation = /would you like me to|should i (?:go ahead and )?update|let me know if you want me to update/i.test(
-      lowered
-    );
-    const alreadyApplied = /i (?:have|just) (?:updated|set)|it's (?:all )?set|done\b/.test(lowered);
-
-    return {
-      command,
-      needsConfirmation: needsConfirmation && !alreadyApplied,
-      alreadyApplied
-    };
-  }
-
-  function handleAssistantMessageActions(message) {
-    const suggestion = extractAssistantFieldSuggestion(message);
-    if (!suggestion) {
-      return;
+  function resolveFieldFromAction(action) {
+    if (!action || typeof action !== 'object') return null;
+    if (action.fieldId && formFieldCache.has(action.fieldId)) {
+      return formFieldCache.get(action.fieldId);
     }
-
-    if (suggestion.needsConfirmation) {
-      pendingFieldUpdate = suggestion.command;
-      return;
-    }
-
-    pendingFieldUpdate = null;
-    const applied = applyFieldCommand(suggestion.command, { acknowledge: false });
-    if (!applied) {
-      recordMessage(
-        'assistant',
-        `I couldn't automatically update the ${suggestion.command.fieldDescription} field. Please adjust it manually.`
-      );
-    }
-  }
-
-  function handleDirectFieldCommand(message) {
-    const trimmed = message.trim();
-    if (!trimmed) return false;
-
-    if (pendingFieldUpdate) {
-      if (isAffirmativeResponse(trimmed)) {
-        const command = pendingFieldUpdate;
-        pendingFieldUpdate = null;
-        recordMessage('user', message);
-        if (!applyFieldCommand(command)) {
-          recordMessage(
-            'assistant',
-            `I couldn't automatically update the ${command.fieldDescription} field. Please adjust it manually.`
-          );
+    const selector = action.fieldSelector || action.selector;
+    if (typeof selector === 'string' && selector.trim()) {
+      try {
+        const field = document.querySelector(selector.trim());
+        if (field) {
+          const summary = summarizeField(field);
+          formFieldCache.set(summary.id, field);
+          fieldSummaryCache.set(summary.id, summary);
+          return field;
         }
-        return true;
-      }
-      if (isNegativeResponse(trimmed)) {
-        pendingFieldUpdate = null;
-        recordMessage('user', message);
-        recordMessage('assistant', 'Okay, I will leave that field unchanged.');
-        return true;
+      } catch (error) {
+        console.error('[Permit AI Helper] Invalid selector in action block', error);
       }
     }
+    const descriptors = [action.fieldLabel, action.fieldName, action.fieldDescription];
+    for (const descriptor of descriptors) {
+      const field = typeof descriptor === 'string' ? findFieldByDescription(descriptor) : null;
+      if (field) return field;
+    }
+    return null;
+  }
 
-    const command = parseFieldCommand(message);
-    if (!command) return false;
-    const field = findFieldByDescription(command.fieldDescription);
-    if (!field) return false;
+  function applyAssistantActions(message) {
+    const actions = parseActionBlocks(message);
+    if (!actions.length) return;
 
-    pendingFieldUpdate = null;
-    recordMessage('user', message);
-    setFieldValue(field, command.value);
-    field.focus({ preventScroll: false });
-    highlightField(field);
-    acknowledgeFieldUpdate(field, command.value);
-    return true;
+    actions.forEach(action => {
+      if (!action || action.type !== 'fill_field') {
+        return;
+      }
+
+      const field = resolveFieldFromAction(action);
+      if (!field) {
+        recordMessage(
+          'assistant',
+          `System note: I could not find the field described by "${action.fieldId || action.fieldLabel || action.fieldDescription || 'unknown'}".`
+        );
+        return;
+      }
+
+      const value = typeof action.value === 'string' ? action.value : action.value != null ? String(action.value) : '';
+      setFieldValue(field, value);
+      field.focus({ preventScroll: false });
+      highlightField(field);
+      updateFieldSummary(field);
+    });
   }
 
   async function callAssistant(userContent, context = {}, { skipChatMessage = false, onAssistantMessage } = {}) {
@@ -718,7 +636,7 @@
 
       const assistantReply = (response.message || 'I did not receive a response.').trim();
       recordMessage('assistant', assistantReply);
-      handleAssistantMessageActions(assistantReply);
+      applyAssistantActions(assistantReply);
       if (onAssistantMessage) {
         onAssistantMessage(assistantReply);
       }
@@ -796,9 +714,6 @@
     const value = chatInputEl.value.trim();
     if (!value) return;
     chatInputEl.value = '';
-    if (handleDirectFieldCommand(value)) {
-      return;
-    }
     callAssistant(value, {
       type: 'general',
       fields: collectFields().slice(0, 20),
