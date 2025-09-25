@@ -121,42 +121,6 @@
       line-height: 1.5;
       color: #475569;
     }
-
-    .field-list {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      max-height: 220px;
-      overflow-y: auto;
-    }
-
-    .field-card {
-      border: 1px solid rgba(15, 23, 42, 0.08);
-      border-radius: 8px;
-      padding: 8px;
-      background: #f1f5f9;
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .field-card h3 {
-      font-size: 13px;
-      margin: 0;
-      font-weight: 600;
-    }
-
-    .field-card small {
-      font-size: 12px;
-      color: #64748b;
-    }
-
-    .field-actions {
-      display: flex;
-      gap: 6px;
-    }
-
-    .field-actions button,
     .chat-input button,
     .section button.secondary {
       background: #0f766e;
@@ -172,7 +136,6 @@
       gap: 4px;
     }
 
-    .field-actions button.secondary,
     .section button.secondary,
     .chat-input button.secondary {
       background: #e2e8f0;
@@ -264,11 +227,6 @@
       <button type="button" title="Close">×</button>
     </header>
     <div class="content">
-      <section class="section" id="overview">
-        <h2>Form navigator</h2>
-        <p>Review detected form fields and ask the assistant to clarify or enhance your input.</p>
-        <div class="field-list" id="field-list"></div>
-      </section>
       <section class="section" id="assistant">
         <h2>Assistant</h2>
         <div class="chat-log" id="chat-log"></div>
@@ -283,7 +241,6 @@
   shadow.appendChild(panel);
 
   const closeButton = panel.querySelector('header button');
-  const fieldListEl = panel.querySelector('#field-list');
   const chatLogEl = panel.querySelector('#chat-log');
   const chatInputEl = panel.querySelector('#chat-input');
   const chatSendEl = panel.querySelector('#chat-send');
@@ -418,33 +375,6 @@
       formFieldCache.set(summary.id, field);
       fieldSummaryCache.set(summary.id, summary);
       return summary;
-    });
-  }
-
-  function renderFieldList(fields) {
-    fieldListEl.innerHTML = '';
-    if (!fields.length) {
-      const empty = document.createElement('p');
-      empty.textContent = 'No form fields detected on this page.';
-      fieldListEl.appendChild(empty);
-      return;
-    }
-
-    fields.forEach(field => {
-      const card = document.createElement('div');
-      card.className = 'field-card';
-      const title = field.label || field.name || field.placeholder || field.tagName;
-      card.innerHTML = `
-        <h3>${title}</h3>
-        <small>${field.tagName}${field.type ? ` • ${field.type}` : ''}${field.required ? ' • required' : ''}</small>
-        <div class="field-actions">
-          <button data-action="improve" data-field-id="${field.id}">Improve</button>
-          <button class="secondary" data-action="explain" data-field-id="${field.id}">Explain</button>
-          <button class="secondary" data-action="focus" data-field-id="${field.id}">Focus</button>
-        </div>
-      `;
-      card.addEventListener('mouseenter', () => highlightField(formFieldCache.get(field.id)));
-      fieldListEl.appendChild(card);
     });
   }
 
@@ -665,64 +595,6 @@
     }
   }
 
-  async function handleImprove(fieldId) {
-    const field = formFieldCache.get(fieldId);
-    if (!field) return;
-    const summary = summarizeField(field);
-    const prompt = `Improve the following response for an environmental permitting form. Respond with a refined version only.\nField label: ${summary.label || summary.name || summary.placeholder || summary.tagName}\nCurrent value: ${summary.value || '(empty)'}\nContext: ${summary.placeholder || 'n/a'}`;
-    await callAssistant(prompt, {
-      type: 'improve-field',
-      field: summary,
-      url: location.href
-    }, {
-      skipChatMessage: false,
-      onAssistantMessage: text => {
-        setFieldValue(field, text);
-      }
-    });
-  }
-
-  async function handleExplain(fieldId) {
-    const field = formFieldCache.get(fieldId);
-    if (!field) return;
-    const summary = summarizeField(field);
-    const prompt = `Explain what information should go into the following form field for permitting. Provide helpful guidance and examples.\nField label: ${summary.label || summary.name || summary.placeholder || summary.tagName}\nPlaceholder: ${summary.placeholder || 'None'}\nCurrent value: ${summary.value || '(empty)'}`;
-    await callAssistant(prompt, {
-      type: 'explain-field',
-      field: summary,
-      url: location.href
-    });
-  }
-
-  function focusField(fieldId) {
-    const field = formFieldCache.get(fieldId);
-    if (!field) return;
-    field.focus({ preventScroll: false });
-    highlightField(field);
-  }
-
-  fieldListEl.addEventListener('click', (event) => {
-    const target = event.target;
-    if (!(target instanceof Element)) return;
-    const action = target.getAttribute('data-action');
-    if (!action) return;
-    const fieldId = target.getAttribute('data-field-id');
-    if (!fieldId) return;
-    switch (action) {
-      case 'improve':
-        handleImprove(fieldId);
-        break;
-      case 'explain':
-        handleExplain(fieldId);
-        break;
-      case 'focus':
-        focusField(fieldId);
-        break;
-      default:
-        break;
-    }
-  });
-
   chatSendEl.addEventListener('click', () => {
     const value = chatInputEl.value.trim();
     if (!value) return;
@@ -742,12 +614,7 @@
     }
   });
 
-  function updateFields() {
-    const fields = collectFields();
-    renderFieldList(fields);
-  }
-
-  updateFields();
+  collectFields();
 
   let pendingUpdate = null;
   const observer = new MutationObserver(() => {
@@ -756,7 +623,7 @@
     }
     pendingUpdate = window.setTimeout(() => {
       pendingUpdate = null;
-      updateFields();
+      collectFields();
     }, 400);
   });
 
