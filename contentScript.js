@@ -294,6 +294,7 @@
     role: 'system',
     content: 'You are Permit AI, an expert environmental review and permitting assistant embedded inside a browser extension. Help the user interpret web form fields, improve their text responses with professional tone, and keep answers concise and actionable. Always ask for clarification if the request is ambiguous.'
   }];
+  const fieldSummaryCache = new Map();
   let isOpen = false;
   let isBusy = false;
 
@@ -399,9 +400,11 @@
     const selectors = 'input:not([type="hidden"]):not([disabled]), textarea:not([disabled]), select:not([disabled])';
     const fields = Array.from(document.querySelectorAll(selectors));
     formFieldCache.clear();
+    fieldSummaryCache.clear();
     return fields.map(field => {
       const summary = summarizeField(field);
       formFieldCache.set(summary.id, field);
+      fieldSummaryCache.set(summary.id, summary);
       return summary;
     });
   }
@@ -441,8 +444,138 @@
     chatLogEl.scrollTop = chatLogEl.scrollHeight;
   }
 
+  function recordMessage(role, content) {
+    appendMessage(role, content);
+    conversation.push({ role, content });
+  }
+
   function setStatus(visible) {
     statusEl.classList.toggle('hidden', !visible);
+  }
+
+  function normalizeText(text) {
+    const lower = text.toLowerCase();
+    const normalized = typeof lower.normalize === 'function' ? lower.normalize('NFKD') : lower;
+    return normalized.replace(/[\u0300-\u036f]/g, '').trim();
+  }
+
+  function scoreMatch(candidate, query) {
+    if (!candidate || !query) return 0;
+    const normalizedCandidate = normalizeText(candidate);
+    if (!normalizedCandidate) return 0;
+    if (normalizedCandidate === query) {
+      return 100;
+    }
+    if (normalizedCandidate.includes(query)) {
+      return query.length / normalizedCandidate.length * 10;
+    }
+    const queryWords = query.split(/\s+/).filter(Boolean);
+    if (!queryWords.length) return 0;
+    const matches = queryWords.filter(word => normalizedCandidate.includes(word));
+    if (!matches.length) return 0;
+    return matches.length + matches.reduce((acc, word) => acc + word.length, 0) / 10;
+  }
+
+  function findFieldByDescription(description) {
+    const query = normalizeText(description).replace(/\b(field|input|textbox|box)\b/g, '').trim();
+    if (!query) return null;
+    if (!fieldSummaryCache.size) {
+      collectFields();
+    }
+    let bestFieldId = null;
+    let bestScore = 0;
+    fieldSummaryCache.forEach((summary, id) => {
+      const candidates = [
+        summary.label,
+        summary.name,
+        summary.placeholder,
+        summary.ariaLabel,
+        summary.tagName,
+        id
+      ];
+      for (const candidate of candidates) {
+        const score = scoreMatch(candidate, query);
+        if (score > bestScore) {
+          bestScore = score;
+          bestFieldId = id;
+        }
+      }
+    });
+    if (!bestFieldId || bestScore < 1) return null;
+    return formFieldCache.get(bestFieldId) || null;
+  }
+
+  function extractQuotedValue(text) {
+    const match = text.match(/["'“”‘’]([^"'“”‘’]+)["'“”‘’]/);
+    if (!match) return null;
+    return match[1].trim();
+  }
+
+  function parseFieldCommand(message) {
+    const lowered = message.toLowerCase();
+    const verbs = ['put', 'type', 'enter', 'fill', 'set', 'update'];
+    if (!verbs.some(verb => lowered.includes(verb))) {
+      return null;
+    }
+
+    let value = extractQuotedValue(message);
+    let remainder = message;
+    if (value) {
+      remainder = message.replace(/["'“”‘’][^"'“”‘’]+["'“”‘’]/, '');
+    }
+
+    const fieldMatch = remainder.match(/(?:in|into|to|for)\s+(?:the\s+)?([\w\s-]+?)(?:\s+(?:field|input|box|textbox))?(?:[?.!,]|$)/i);
+    let fieldDescription = fieldMatch ? fieldMatch[1] : '';
+
+    if (!value) {
+      const setMatch = message.match(/(?:set|update)\s+(?:the\s+)?([\w\s-]+?)(?:\s+(?:field|input|box|textbox))?\s+(?:to|as)\s+([^?.!,]+)/i);
+      if (setMatch) {
+        fieldDescription = fieldDescription || setMatch[1];
+        value = setMatch[2].trim();
+      }
+    }
+
+    if (!value) {
+      const simpleMatch = message.match(/(?:put|type|enter|fill)\s+(.+?)\s+(?:in|into|to)\s+(?:the\s+)?([\w\s-]+)(?:\s+(?:field|input|box|textbox))?/i);
+      if (simpleMatch) {
+        value = simpleMatch[1].trim();
+        fieldDescription = fieldDescription || simpleMatch[2];
+      }
+    }
+
+    if (value) {
+      value = value.replace(/[?.!,]+$/, '').trim();
+    }
+    if (fieldDescription) {
+      fieldDescription = fieldDescription.replace(/[?.!,]+$/, '').trim();
+    }
+
+    if (!value || !fieldDescription) {
+      return null;
+    }
+
+    return { value, fieldDescription };
+  }
+
+  function acknowledgeFieldUpdate(field, value) {
+    const summary = summarizeField(field);
+    fieldSummaryCache.set(summary.id, summary);
+    const label = summary.label || summary.name || summary.placeholder || summary.tagName || 'field';
+    recordMessage('assistant', `Set "${value}" in the ${label}. Let me know if you need anything else.`);
+  }
+
+  function handleDirectFieldCommand(message) {
+    const command = parseFieldCommand(message);
+    if (!command) return false;
+    const field = findFieldByDescription(command.fieldDescription);
+    if (!field) return false;
+
+    recordMessage('user', message);
+    setFieldValue(field, command.value);
+    field.focus({ preventScroll: false });
+    highlightField(field);
+    acknowledgeFieldUpdate(field, command.value);
+    return true;
   }
 
   async function callAssistant(userContent, context = {}, { skipChatMessage = false, onAssistantMessage } = {}) {
@@ -451,8 +584,7 @@
     setStatus(true);
 
     if (!skipChatMessage) {
-      appendMessage('user', userContent);
-      conversation.push({ role: 'user', content: userContent });
+      recordMessage('user', userContent);
     } else {
       conversation.push({ role: 'user', content: userContent });
     }
@@ -484,14 +616,12 @@
 
       if (!response || response.error) {
         const message = response && response.error ? response.error : 'Unable to reach Permit AI service. Check your API key in extension options.';
-        appendMessage('assistant', message);
-        conversation.push({ role: 'assistant', content: message });
+        recordMessage('assistant', message);
         return message;
       }
 
       const assistantReply = response.message || 'I did not receive a response.';
-      appendMessage('assistant', assistantReply);
-      conversation.push({ role: 'assistant', content: assistantReply });
+      recordMessage('assistant', assistantReply);
       if (onAssistantMessage) {
         onAssistantMessage(assistantReply);
       }
@@ -499,8 +629,7 @@
     } catch (error) {
       const message = 'Permit AI encountered an unexpected error.';
       console.error('[Permit AI Helper] Failed to call assistant', error);
-      appendMessage('assistant', message);
-      conversation.push({ role: 'assistant', content: message });
+      recordMessage('assistant', message);
       return message;
     } finally {
       isBusy = false;
@@ -570,6 +699,9 @@
     const value = chatInputEl.value.trim();
     if (!value) return;
     chatInputEl.value = '';
+    if (handleDirectFieldCommand(value)) {
+      return;
+    }
     callAssistant(value, {
       type: 'general',
       fields: collectFields().slice(0, 20),
