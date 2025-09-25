@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Permit AI Helper",
+  "description": "AI assistant for environmental review and permitting workflows that helps complete web forms.",
+  "version": "0.1.0",
+  "action": {
+    "default_title": "Permit AI Helper"
+  },
+  "permissions": [
+    "storage",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["contentScript.js"],
+      "css": ["panel.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

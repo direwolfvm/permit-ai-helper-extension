@@ -1,0 +1,111 @@
+:root {
+  color-scheme: light dark;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+}
+
+main {
+  max-width: 540px;
+  padding: 32px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 24px;
+}
+
+p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px;
+  background: white;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.1);
+}
+
+label {
+  font-weight: 600;
+}
+
+input[type='password'] {
+  padding: 10px 12px;
+  font-size: 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(15, 23, 42, 0.25);
+  font-family: inherit;
+}
+
+.actions {
+  display: flex;
+  gap: 12px;
+}
+
+button {
+  cursor: pointer;
+  border-radius: 8px;
+  border: none;
+  padding: 10px 16px;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+button[type='submit'] {
+  background: #0f766e;
+  color: white;
+}
+
+button#clear {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+.hint {
+  font-size: 13px;
+  color: #475569;
+}
+
+output#status {
+  min-height: 20px;
+  font-size: 13px;
+  color: #0f172a;
+}
+
+output#status.error {
+  color: #b91c1c;
+}
+
+.help {
+  background: white;
+  border-radius: 16px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  padding: 20px;
+  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08);
+}
+
+.help ul {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
