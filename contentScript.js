@@ -91,7 +91,7 @@
 
     .content {
       flex: 1;
-      overflow-y: auto;
+      overflow: hidden;
       padding: 12px 16px;
       display: flex;
       flex-direction: column;
@@ -106,6 +106,7 @@
       display: flex;
       flex-direction: column;
       gap: 8px;
+      flex: 1;
     }
 
     .section h2 {
@@ -146,7 +147,8 @@
       display: flex;
       flex-direction: column;
       gap: 8px;
-      max-height: 220px;
+      flex: 1;
+      min-height: 0;
       overflow-y: auto;
       padding-right: 4px;
     }
