@@ -182,8 +182,8 @@
     .chat-input textarea {
       flex: 1;
       resize: vertical;
-      min-height: 50px;
-      max-height: 120px;
+      min-height: 100px;
+      max-height: 240px;
       border-radius: 8px;
       border: 1px solid rgba(15, 23, 42, 0.2);
       padding: 8px;
@@ -383,10 +383,106 @@
     });
   }
 
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function renderMarkdown(text) {
+    if (!text) return '';
+
+    const lines = String(text).split(/\r?\n/);
+    let html = '';
+    let inCodeBlock = false;
+    let inList = false;
+
+    const closeList = () => {
+      if (inList) {
+        html += '</ul>';
+        inList = false;
+      }
+    };
+
+    const applyInlineFormatting = value => {
+      let result = value;
+
+      const codeSpans = [];
+      result = result.replace(/`([^`]+)`/g, (_, code) => {
+        const placeholder = `__CODE_PLACEHOLDER_${codeSpans.length}__`;
+        codeSpans.push(`<code>${escapeHtml(code)}</code>`);
+        return placeholder;
+      });
+
+      result = result
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+        .replace(/~~([^~]+)~~/g, '<del>$1</del>')
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, label, url) => {
+          const safeUrl = escapeHtml(url.trim());
+          return `<a href="${safeUrl}" target="_blank" rel="noreferrer">${label}</a>`;
+        });
+
+      codeSpans.forEach((snippet, index) => {
+        result = result.replace(`__CODE_PLACEHOLDER_${index}__`, snippet);
+      });
+
+      return result;
+    };
+
+    for (const line of lines) {
+      if (/^```/.test(line.trim())) {
+        if (inCodeBlock) {
+          html += '</code></pre>';
+          inCodeBlock = false;
+        } else {
+          closeList();
+          inCodeBlock = true;
+          html += '<pre><code>';
+        }
+        continue;
+      }
+
+      if (inCodeBlock) {
+        html += `${escapeHtml(line)}\n`;
+        continue;
+      }
+
+      const listMatch = line.match(/^\s*[-*]\s+(.*)$/);
+      if (listMatch) {
+        if (!inList) {
+          html += '<ul>';
+          inList = true;
+        }
+        html += `<li>${applyInlineFormatting(escapeHtml(listMatch[1]))}</li>`;
+        continue;
+      }
+
+      if (!line.trim()) {
+        closeList();
+        html += '';
+        continue;
+      }
+
+      closeList();
+      html += `<p>${applyInlineFormatting(escapeHtml(line))}</p>`;
+    }
+
+    closeList();
+    if (inCodeBlock) {
+      html += '</code></pre>';
+    }
+
+    return html;
+  }
+
   function appendMessage(role, content) {
     const bubble = document.createElement('div');
     bubble.className = `message ${role}`;
-    bubble.textContent = content;
+    bubble.innerHTML = renderMarkdown(content);
     chatLogEl.appendChild(bubble);
     chatLogEl.scrollTop = chatLogEl.scrollHeight;
   }
