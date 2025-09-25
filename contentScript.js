@@ -346,6 +346,31 @@
     return labelText;
   }
 
+  function setFieldValue(field, value) {
+    if (!field) return;
+
+    const tagName = field.tagName?.toLowerCase();
+    const canUseValueSetter = tagName === 'input' || tagName === 'textarea' || tagName === 'select';
+
+    if (canUseValueSetter || typeof field.value !== 'undefined') {
+      const ownDescriptor = Object.getOwnPropertyDescriptor(field, 'value');
+      const prototype = Object.getPrototypeOf(field);
+      const protoDescriptor = prototype ? Object.getOwnPropertyDescriptor(prototype, 'value') : undefined;
+      const setter = ownDescriptor?.set || protoDescriptor?.set;
+
+      if (setter) {
+        setter.call(field, value);
+      } else {
+        field.value = value;
+      }
+    } else if ('textContent' in field) {
+      field.textContent = value;
+    }
+
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    field.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
   function summarizeField(field) {
     let identifier = field.dataset.permitAiHelperId || field.id || field.name;
     if (!identifier) {
@@ -495,11 +520,7 @@
     }, {
       skipChatMessage: false,
       onAssistantMessage: text => {
-        if (typeof field.value !== 'undefined') {
-          field.value = text;
-          field.dispatchEvent(new Event('input', { bubbles: true }));
-          field.dispatchEvent(new Event('change', { bubbles: true }));
-        }
+        setFieldValue(field, text);
       }
     });
   }
