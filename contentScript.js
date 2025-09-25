@@ -59,6 +59,7 @@
       transform: translateX(100%);
       transition: transform 0.25s ease;
       pointer-events: none;
+      overflow: hidden;
     }
 
     .panel.open {
@@ -91,6 +92,7 @@
 
     .content {
       flex: 1;
+      min-height: 0;
       overflow: hidden;
       padding: 12px 16px;
       display: flex;
@@ -107,6 +109,7 @@
       flex-direction: column;
       gap: 8px;
       flex: 1;
+      min-height: 0;
     }
 
     .section h2 {
