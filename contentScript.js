@@ -308,6 +308,7 @@
   let isOpen = false;
   let isBusy = false;
   const ACTION_BLOCK_REGEX = /```action\s+([\s\S]*?)```/gi;
+  const ACTION_BLOCK_STRIP_REGEX = /```action[\s\S]*?```/gi;
 
   function togglePanel(forceState) {
     if (typeof forceState === 'boolean') {
@@ -455,9 +456,12 @@
     chatLogEl.scrollTop = chatLogEl.scrollHeight;
   }
 
-  function recordMessage(role, content) {
+  function recordMessage(role, content, { conversationContent } = {}) {
     appendMessage(role, content);
-    conversation.push({ role, content });
+    conversation.push({
+      role,
+      content: typeof conversationContent === 'string' ? conversationContent : content
+    });
   }
 
   function setStatus(visible) {
@@ -592,6 +596,13 @@
     });
   }
 
+  function stripActionBlocks(message) {
+    if (!message || typeof message !== 'string') {
+      return '';
+    }
+    return message.replace(ACTION_BLOCK_STRIP_REGEX, '').trim();
+  }
+
   async function callAssistant(userContent, context = {}, { skipChatMessage = false, onAssistantMessage } = {}) {
     if (isBusy) return;
     isBusy = true;
@@ -635,8 +646,10 @@
       }
 
       const assistantReply = (response.message || 'I did not receive a response.').trim();
-      recordMessage('assistant', assistantReply);
       applyAssistantActions(assistantReply);
+      const displayReply = stripActionBlocks(assistantReply);
+      const messageForDisplay = displayReply || 'All set! I updated the requested field.';
+      recordMessage('assistant', messageForDisplay, { conversationContent: assistantReply });
       if (onAssistantMessage) {
         onAssistantMessage(assistantReply);
       }
