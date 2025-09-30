@@ -46,12 +46,17 @@ label {
   font-weight: 600;
 }
 
-input[type='password'] {
+input[type='password'],
+input[type='url'] {
   padding: 10px 12px;
   font-size: 14px;
   border-radius: 8px;
   border: 1px solid rgba(15, 23, 42, 0.25);
   font-family: inherit;
+}
+
+label + input {
+  margin-top: -4px;
 }
 
 .actions {

@@ -692,7 +692,7 @@
       });
 
       if (!response || response.error) {
-        const message = response && response.error ? response.error : 'Unable to reach Permit AI service. Check your API key in extension options.';
+        const message = response && response.error ? response.error : 'Unable to reach Permit AI service. Check your CopilotKit settings in extension options.';
         recordMessage('assistant', message);
         return message;
       }
