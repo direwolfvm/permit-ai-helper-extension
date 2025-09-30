@@ -1,5 +1,6 @@
 const form = document.getElementById('options-form');
-const input = document.getElementById('api-key');
+const apiKeyInput = document.getElementById('api-key');
+const endpointInput = document.getElementById('endpoint');
 const clearButton = document.getElementById('clear');
 const status = document.getElementById('status');
 
@@ -7,40 +8,51 @@ init();
 
 async function init() {
   try {
-    const stored = await chrome.storage.sync.get('permitAiApiKey');
-    if (stored?.permitAiApiKey) {
-      input.value = stored.permitAiApiKey;
+    const stored = await chrome.storage.sync.get('copilotkitSettings');
+    const settings = stored?.copilotkitSettings;
+    if (settings?.apiKey) {
+      apiKeyInput.value = settings.apiKey;
+    }
+    if (settings?.endpoint) {
+      endpointInput.value = settings.endpoint;
     }
   } catch (error) {
-    console.error('[Permit AI Helper] Failed to read API key', error);
-    renderStatus('Unable to load stored key.', true);
+    console.error('[Permit AI Helper] Failed to read CopilotKit settings', error);
+    renderStatus('Unable to load stored CopilotKit settings.', true);
   }
 }
 
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
-  const value = input.value.trim();
-  if (!value) {
-    renderStatus('Enter a valid API key.', true);
+  const apiKey = apiKeyInput.value.trim();
+  const endpoint = endpointInput.value.trim();
+
+  if (!apiKey) {
+    renderStatus('Enter a valid Copilot Cloud API key.', true);
     return;
   }
   try {
-    await chrome.storage.sync.set({ permitAiApiKey: value });
-    renderStatus('API key saved. You can close this tab.', false);
+    const settings = {
+      apiKey,
+      endpoint: endpoint || undefined
+    };
+    await chrome.storage.sync.set({ copilotkitSettings: settings });
+    renderStatus('CopilotKit settings saved. You can close this tab.', false);
   } catch (error) {
-    console.error('[Permit AI Helper] Failed to store API key', error);
-    renderStatus('Failed to store the key. Try again.', true);
+    console.error('[Permit AI Helper] Failed to store CopilotKit settings', error);
+    renderStatus('Failed to store the settings. Try again.', true);
   }
 });
 
 clearButton.addEventListener('click', async () => {
   try {
-    await chrome.storage.sync.remove('permitAiApiKey');
-    input.value = '';
-    renderStatus('API key removed.', false);
+    await chrome.storage.sync.remove('copilotkitSettings');
+    apiKeyInput.value = '';
+    endpointInput.value = '';
+    renderStatus('CopilotKit settings removed.', false);
   } catch (error) {
-    console.error('[Permit AI Helper] Failed to clear API key', error);
-    renderStatus('Could not clear the key. Try again.', true);
+    console.error('[Permit AI Helper] Failed to clear CopilotKit settings', error);
+    renderStatus('Could not clear the settings. Try again.', true);
   }
 });
 
